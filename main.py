@@ -30,6 +30,7 @@ from utils import Logger, worker_init_fn, get_lr
 from training import train_epoch
 from validation import val_epoch
 import inference
+import pandas as pd
 
 
 def json_serial(obj):
@@ -77,7 +78,10 @@ def get_opt():
                 json.dump(vars(opt), opt_file, default=json_serial)
     else:
         print(opt)
-        with (opt.result_path / 'opts.json').open('w') as opt_file:
+#         with (opt.result_path / 'opts.json').open('w') as opt_file:
+        if not os.path.exists(opt.result_path):
+            os.makedirs(opt.result_path)
+        with open(os.path.join(opt.result_path, 'opts.json'), 'w') as opt_file:
             json.dump(vars(opt), opt_file, default=json_serial)
 
     return opt
@@ -282,11 +286,14 @@ def get_inference_utils(opt):
     temporal_transform.append(
         SlidingWindow(opt.sample_duration, opt.inference_stride))
     temporal_transform = TemporalCompose(temporal_transform)
-
+    
     inference_data, collate_fn = get_inference_data(
-        opt.video_path, opt.annotation_path, opt.dataset, opt.input_type,
-        opt.file_type, opt.inference_subset, spatial_transform,
-        temporal_transform)
+        opt.video_path, opt.input_type, opt.file_type, 
+        spatial_transform, temporal_transform)
+
+#     inference_data, collate_fn = get_inference_data(
+#         opt.video_path, opt.input_type, opt.file_type, 
+#         spatial_transform)
 
     inference_loader = torch.utils.data.DataLoader(
         inference_data,
@@ -296,8 +303,14 @@ def get_inference_utils(opt):
         pin_memory=True,
         worker_init_fn=worker_init_fn,
         collate_fn=collate_fn)
-
-    return inference_loader, inference_data.class_names
+    
+    df = pd.read_csv('kinetics_700_labels.csv')
+    class_names = {}
+    for i in range(df.shape[0]):
+        row = df.iloc[i]
+        class_names[row[0]] = row[1]
+    
+    return inference_loader, class_names
 
 
 def save_checkpoint(save_file_path, epoch, arch, model, optimizer, scheduler):
@@ -405,7 +418,6 @@ def main_worker(index, opt):
         inference_loader, inference_class_names = get_inference_utils(opt)
         inference_result_path = opt.result_path / '{}.json'.format(
             opt.inference_subset)
-
         inference.inference(inference_loader, model, inference_result_path,
                             inference_class_names, opt.inference_no_average,
                             opt.output_topk)
