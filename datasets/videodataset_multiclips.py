@@ -6,21 +6,13 @@ import torch
 from torch.utils.data.dataloader import default_collate
 
 from .videodataset import VideoDataset
+import os
 
 
 def collate_fn(batch):
-    batch_clips, batch_targets = zip(*batch)
-
+    batch_clips = zip(*batch)
     batch_clips = [clip for multi_clips in batch_clips for clip in multi_clips]
-    batch_targets = [
-        target for multi_targets in batch_targets for target in multi_targets
-    ]
-
-    target_element = batch_targets[0]
-    if isinstance(target_element, int) or isinstance(target_element, str):
-        return default_collate(batch_clips), default_collate(batch_targets)
-    else:
-        return default_collate(batch_clips), batch_targets
+    return default_collate(batch_clips)
 
 
 class VideoDatasetMultiClips(VideoDataset):
@@ -41,29 +33,12 @@ class VideoDatasetMultiClips(VideoDataset):
         return clips, segments
 
     def __getitem__(self, index):
-        path = self.data[index]['video']
-
-        video_frame_indices = self.data[index]['frame_indices']
+        path = self.data[index]
+        frame_list = os.listdir(path)
+        video_frame_indices = [indice for indice in range(1, len(frame_list)+1)]
         if self.temporal_transform is not None:
             video_frame_indices = self.temporal_transform(video_frame_indices)
-
         clips, segments = self.__loading(path, video_frame_indices)
-
-        if isinstance(self.target_type, list):
-            target = [self.data[index][t] for t in self.target_type]
-        else:
-            target = self.data[index][self.target_type]
-
-        if 'segment' in self.target_type:
-            if isinstance(self.target_type, list):
-                segment_index = self.target_type.index('segment')
-                targets = []
-                for s in segments:
-                    targets.append(copy.deepcopy(target))
-                    targets[-1][segment_index] = s
-            else:
-                targets = segments
-        else:
-            targets = [target for _ in range(len(segments))]
-
-        return clips, targets
+        return clips
+    
+    
